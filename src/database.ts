@@ -13,7 +13,7 @@ db.pragma("journal_mode = WAL");
 /**
  * Create the orders table if it doesn't exist.
  * This runs once at startup.
- */
+ **/
 export function initDatabase(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS orders (
@@ -68,7 +68,7 @@ export function runQuery(sql: string): { rows: Record<string, unknown>[]; error:
     }
 
     const rows = db.prepare(sql).all() as Record<string, unknown>[];
-    return { rows, error: null };
+    return { rows, error: null };//return row with no error
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown database error";
     return { rows: [], error: message };

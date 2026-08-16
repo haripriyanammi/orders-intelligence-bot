@@ -1,31 +1,31 @@
 import dotenv from "dotenv";
-dotenv.config(); // Load .env BEFORE anything else reads process.env
+dotenv.config(); 
 
 import { Client, GatewayIntentBits, Events } from "discord.js";
 import express from "express";
 import { initDatabase, upsertOrder, runQuery } from "./database";
 import { classifyAndGenerateSQL, composeAnswer } from "./llm";
 
-// ─── 1) Initialize database ─────────────────────────────────────
+//1) Init
 initDatabase();
 
-// ─── 2) Discord Bot ──────────────────────────────────────────────
+//bot
 const client = new Client({
   intents: [
-    GatewayIntentBits.Guilds,           // access to servers
-    GatewayIntentBits.GuildMessages,     // see messages in channels
-    GatewayIntentBits.MessageContent,    // read the actual text of messages
+    GatewayIntentBits.Guilds,           
+    GatewayIntentBits.GuildMessages,     
+    GatewayIntentBits.MessageContent,    
   ],
 });
 
-// When the bot is ready and connected
+// When the bot is connected
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`✅ Discord bot logged in as ${readyClient.user.tag}`);
 });
 
 // When a message is sent in any channel the bot can see
 client.on(Events.MessageCreate, async (message) => {
-  // Ignore messages from bots (including itself) to prevent loops
+  
   if (message.author.bot) return;
 
   const userMessage = message.content.trim();
@@ -76,15 +76,15 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-// Log in to Discord
+
 const DISCORD_TOKEN = process.env.DISCORD_BOT_TOKEN;
 if (!DISCORD_TOKEN) {
   console.error("❌ DISCORD_BOT_TOKEN is missing in .env");
   process.exit(1);
 }
-client.login(DISCORD_TOKEN);
+client.login(DISCORD_TOKEN);//ready for websocket connection
 
-// ─── 3) Express Webhook Server ──────────────────────────────────
+//for webhook
 const app = express();
 app.use(express.json());
 
@@ -97,19 +97,19 @@ app.get("/health", (_req, res) => {
   });
 });
 
-// Webhook endpoint: receive new orders from external systems
+
 app.post("/webhook/orders", (req, res) => {
   try {
     const order = req.body;
 
-    // Validate required fields
+    
     if (!order.order_id || !order.customer_name || !order.item) {
       return res.status(400).json({
         error: "Missing required fields: order_id, customer_name, item",
       });
     }
 
-    // Insert into database
+    // Insert 
     upsertOrder({
       order_id: order.order_id,
       customer_name: order.customer_name,
@@ -130,7 +130,7 @@ app.post("/webhook/orders", (req, res) => {
   }
 });
 
-// Start the webhook server
+
 const PORT = Number(process.env.PORT) || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Webhook server running on http://localhost:${PORT}`);

@@ -2,10 +2,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getTableInfo } from "./database";
 
 // Initialize Gemini client
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
-/**
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");//only to get gemini client and config
+const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash-lite" });/**
  * Step 1: Classify the message and generate SQL if it's about orders.
  *
  * Returns either:
@@ -16,7 +14,7 @@ export async function classifyAndGenerateSQL(
   userMessage: string
 ): Promise<{ type: "query"; sql: string } | { type: "not_order"; reply: string }> {
   const tableInfo = getTableInfo();
-
+//prompt given to gemini
   const prompt = `You are a helpful assistant that works with a customer orders database.
 
 DATABASE SCHEMA:
@@ -76,7 +74,7 @@ export async function composeAnswer(
 
 USER QUESTION: "${userMessage}"
 
-SQL QUERY USED: ${sql}
+SQL QUERY USED: ${sql}//
 
 DATABASE RESULTS (${rows.length} row${rows.length > 1 ? "s" : ""}):
 ${JSON.stringify(rows, null, 2)}
