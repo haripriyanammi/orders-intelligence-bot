@@ -1,134 +1,101 @@
 # Orders Intelligence Bot
 
-A Discord bot that answers natural-language questions about customer orders. It listens in a team chat channel, understands queries like *"What is Ram's order status?"*, fetches the relevant data from a SQLite database, and posts a clear plain-English answer back — no SQL required.
+A Discord bot that takes natural language questions about customer orders and answers them using data from a SQLite database. You can ask like "How much has Jordan spent?" and it'll query the database and reply in plain English.
 
-## Architecture
+## How It Works
 
-```
-User types question in Discord
-        │
-        ▼
-Discord Gateway (WebSocket)
-        │
-        ▼
-Bot receives message
-        │
-        ▼
-Gemini LLM classifies the message:
-  ├─ Not about orders → reply with friendly message
-  └─ About orders → generates a SQL query
-        │
-        ▼
-SQLite database executes the query
-        │
-        ▼
-Results sent back to Gemini LLM
-        │
-        ▼
-Gemini composes a plain-English answer
-        │
-        ▼
-Bot posts the answer in the Discord channel
-```
+The bot uses a two step approach with Google's Gemini LLM:
 
-A separate Express server runs alongside the bot, exposing a webhook endpoint (`POST /webhook/orders`) that accepts new orders from external systems and inserts them into the database in real time.
+1. User types a question in Discord
+2. The bot sends the question + the database schema to Gemini
+3. Gemini figures out what SQL query to run or if it's not an order related question just replies normally
+4. The bot runs the SQL against SQLite and gets the results
+5. Those results go back to Gemini, which writes a human friendly answer
+6. The bot posts that answer back in Discord
+
+There's also an Express server running alongside the bot with a webhook endpoint (`POST /webhook/orders`) so external systems can push new orders into the database. Once an order is added through the webhook, it immediately shows up when you ask about it in Discord.
 
 ## Tech Stack
 
-- **Runtime:** Node.js + TypeScript
-- **Chat Platform:** Discord (via discord.js)
-- **Database:** SQLite (via better-sqlite3)
-- **LLM:** Google Gemini 2.0 Flash (via @google/generative-ai)
-- **Webhook Server:** Express
+- Node.js + TypeScript (runs with ts-node, no build step needed)
+- discord.js for the Discord connection
+- better-sqlite3 for the database
+- Google Gemini 3.5-flash-lite for the LLM calls
+- Express for the webhook server
 
-## Prerequisites
+## String of the code
 
-- Node.js v18 or higher
-- A Discord account and bot token ([Developer Portal](https://discord.com/developers/applications))
-- A Google Gemini API key ([AI Studio](https://aistudio.google.com/api-keys))
+Needed Node.js v18+, a Discord bot token, and a Gemini API key.
 
-## Setup
+```bash
+git clone https://github.com/haripriyanammi/orders-intelligence-bot.git
+cd orders-intelligence-bot
+npm install
+```
 
-1. **Clone the repository and install dependencies:**
-   ```bash
-   git clone <repo-url>
-   cd orders-intelligence-bot
-   npm install
-   ```
+Copy the example env file and added keys:
 
-2. **Configure environment variables:**
-   ```bash
-   cp .env.example .env
-   ```
-   Open `.env` and fill in your keys:
-   ```
-   DISCORD_BOT_TOKEN=your_discord_bot_token
-   GEMINI_API_KEY=your_gemini_api_key
-   PORT=3000
-   ```
+```bash
+cp .env.example .env
+```
 
-3. **Load the CSV data into the database:**
-   ```bash
-   npx ts-node src/loadCsv.ts
-   ```
-   This creates `orders.db` with all 20 orders from the CSV.
+Then open `.env` and fill in:
+```
+DISCORD_BOT_TOKEN=your_token_here
+GEMINI_API_KEY=your_key_here
+PORT=3000
+```
 
-4. **Start the bot:**
-   ```bash
-   npx ts-node src/index.ts
-   ```
-   You should see:
-   ```
-   ✅ Database initialized
-   ✅ Webhook server running on http://localhost:3000
-   ✅ Discord bot logged in as Orders Intelligence Bot#1234
-   ```
+Load the CSV data into the database:
 
-5. **Test it:** Go to your Discord server and type a question in the `#general` channel:
-   - "What is Ram's order status?"
-   - "How much has Jordan spent?"
-   - "Show me all pending orders"
-   - "What is the most expensive order?"
+```bash
+npx ts-node src/loadCsv.ts
+```
 
-## Webhook API
+Start the bot:
 
-New orders can be sent to the system via the webhook endpoint:
+```bash
+npx ts-node src/index.ts
+```
+
+You should see three green checkmarks — database ready, webhook server running, and Discord bot logged in. Now go to your Discord server and try asking something.
+
+## Webhook
+
+You can also add orders through the webhook. Here's an example with curl:
 
 ```bash
 curl -X POST http://localhost:3000/webhook/orders \
   -H "Content-Type: application/json" \
   -d '{
     "order_id": "ORD-021",
-    "customer_name": "New Customer",
-    "item": "Wireless Keyboard",
-    "qty": 1,
-    "amount": 59.99,
-    "status": "pending",
-    "ordered_at": "2024-01-25 10:00",
-    "notes": "Express shipping"
+    "customer_name": "Priya Sharma",
+    "item": "Wireless Mouse",
+    "qty": 2,
+    "amount": 45.99,
+    "status": "pending"
   }'
 ```
+Can also check throgh postman by using POST METHOD 
 
-A health check is available at `GET /health`.
+There's also a health check at `GET /health` that tells you if the bot is connected.
 
-## Data Quality Handling
+## How I Handled Edge Cases
 
-The system handles dirty data gracefully:
-
-- **$0.00 amounts** (e.g., ORD-011): The LLM is instructed to flag these as "amount pending" rather than reporting zero spend.
-- **Ambiguous names** (e.g., "Ram" matches Ram Patel and Ram Sharma): The query uses LIKE wildcards, and the LLM clearly separates results by customer so there is no confusion.
-- **Missing delivery dates**: Shown as "not yet scheduled" instead of null.
-- **SQL injection prevention**: Only SELECT queries are executed; any non-SELECT statement is rejected.
+- **Two customers named Ram:** The data has both Ram Patel and Ram Sharma. When someone asks about "Ram", the bot finds both and lists their orders separately so there's no confusion.
+- **$0.00 amount (ORD-011):** This order has a note saying "Quote pending approval", so the bot flags it as amount pending instead of reporting zero spend.
+- **Missing delivery dates:** Some orders don't have a delivery date yet (pending/processing ones). The bot shows these as "not yet scheduled" instead of showing null.
+- **SQL injection:** The bot only allows SELECT queries — anything else gets rejected before it reaches the database.
 
 ## Design Decisions
 
-- **SQLite over PostgreSQL/MySQL:** For a 20-row dataset running locally, SQLite removes all setup friction — no server process, no credentials, just a file. The same SQL queries would work with a production database by swapping the driver.
-- **Two-step LLM flow:** The first LLM call classifies the message and generates SQL; the second takes the database results and composes the English reply. This separation means the SQL generation can be tested independently from the response formatting.
-- **Webhook + Bot in one process:** Both the Express webhook server and the Discord bot run in a single Node.js process for simplicity. In production, these would be separate services behind a load balancer.
-- **LIKE wildcards for name search:** Partial name matching (`%Ram%`) ensures that a user typing just a first name still finds the right orders, even when multiple customers share that name.
+- **Why SQLite:** For 20 rows running locally, there's no need for a full Postgres/MySQL setup. SQLite is just a file, zero config. The SQL is standard enough that switching to Postgres later would mostly just mean changing the driver.
+- **Why two LLM calls:** One call to understand the question and generate SQL, another to take the raw data and write a readable answer. I kept them separate so each step can be tested and debugged on its own.
+- **Why Gemini Flash Lite:** The free tier on Flash was hitting 503 rate limits during peak hours. Flash Lite handles text-to-SQL and result formatting just as well for this use case, with better availability and lower latency.
+- **Bot + webhook in one process:** Kept it simple for now. In production I'd split them into separate services.
 
-## What I'd Improve With More Time
+## Things I'd Add With More Time
 
-1. **Conversation memory:** Store recent exchanges per channel so the bot can handle follow-up questions like "What about their latest order?" without the user repeating the customer name.
-2. **Caching frequent queries:** Popular questions ("show all pending orders") hit the LLM every time. A short-lived cache keyed on normalized question text would save API calls and respond faster.
-3. **Role-based access control:** In a real team, not everyone should see all order data. Integrate Discord roles with database-level row filtering so users only see orders they're authorized to view.
+- **Conversation memory** — right now every question is independent. It would be nice if the bot could handle follow-ups like "What about their latest order?" without repeating the customer name.
+- **Query caching** — if someone asks "show all pending orders" five times, it hits the LLM every time. A short TTL cache would save API calls.
+- **Access control** — in a real team, not everyone should see all order data. Could tie Discord roles to database-level filtering.
